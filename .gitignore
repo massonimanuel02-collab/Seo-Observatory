@@ -1,0 +1,7 @@
+# Credenciales y contraseñas: nunca se suben
+credenciales.json
+.env
+
+# Archivos temporales de Python
+__pycache__/
+*.pyc
