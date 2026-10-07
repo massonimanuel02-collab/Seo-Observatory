@@ -48,7 +48,7 @@ ORDER BY fecha;
 -- Mide cuánto depende el sitio de la gente que ya conoce al estudio.
 SELECT
   CASE
-    WHEN consulta ILIKE '%rios%' OR consulta ILIKE '%ríos%' THEN 'Marca'
+    WHEN consulta ~* '\mr[ií]os\M' THEN 'Marca'  -- palabra completa: no cuenta "salarios" ni "honorarios"
     ELSE 'Sin marca'
   END AS tipo,
   SUM(clics) AS clics,

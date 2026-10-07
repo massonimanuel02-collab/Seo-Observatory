@@ -1,17 +1,7 @@
- =====================================================
+ -- =====================================================
 -- Observatorio SEO - 02: Carga y limpieza de datos
 -- =====================================================
 
-
--- Carga o actualiza el rendimiento de un día.
--- Si la fecha ya existe, reemplaza los valores (Search Console ajusta los últimos días).
-INSERT INTO rendimiento_diario (fecha, clics, impresiones, ctr, posicion)
-VALUES ('2026-10-02', 18, 530, 3.40, 17.50)
-ON CONFLICT (fecha) DO UPDATE SET
-    clics       = EXCLUDED.clics,
-    impresiones = EXCLUDED.impresiones,
-    ctr         = EXCLUDED.ctr,
-    posicion    = EXCLUDED.posicion;
 
 -- :: convierte un tipo en otro. '2026-10-01'::DATE toma un texto y lo vuelve fecha.
 -- REPLACE(ctr, '%', '') saca el %. El otro REPLACE cambia comas por puntos, por si tu Search Console exporta los decimales con coma
@@ -32,6 +22,10 @@ ON CONFLICT (fecha) DO UPDATE SET
     impresiones = EXCLUDED.impresiones,
     ctr         = EXCLUDED.ctr,
     posicion    = EXCLUDED.posicion;
+
+-- Se vacían para poder repetir este script sin duplicar filas
+-- (se vuelven a llenar desde consultas_raw y paginas_raw).
+TRUNCATE consultas, paginas;
 
 -- DATA CONSULTAS 
 INSERT INTO consultas (consulta, clics, impresiones, ctr, posicion)

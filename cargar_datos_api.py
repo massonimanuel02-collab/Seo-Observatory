@@ -6,6 +6,7 @@ Trae los datos de la API de Google Search Console y los guarda en PostgreSQL (Ne
 import json
 import os
 from datetime import date, timedelta
+from pathlib import Path
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -15,6 +16,8 @@ from googleapiclient.discovery import build
 
 # Lee las variables del archivo .env (DATABASE_URL)
 load_dotenv()
+
+RAIZ = Path(__file__).parent  # carpeta del proyecto, sin importar desde dónde se ejecute
 
 SITIO = "sc-domain:estudiojuridicorios.com.ar"
 DIAS_ATRAS = int(os.getenv("DIAS_ATRAS", "90"))  # cuántos días hacia atrás traer
@@ -33,7 +36,7 @@ def conectar_search_console():
     else:
         # En tu compu: las credenciales vienen del archivo
         credenciales = service_account.Credentials.from_service_account_file(
-            "credenciales.json", scopes=SCOPES
+            RAIZ / "credenciales.json", scopes=SCOPES
         )
     return build("searchconsole", "v1", credentials=credenciales)
 
@@ -50,7 +53,8 @@ def traer_datos(servicio, fecha_inicio, fecha_fin):
             "rowLimit": FILAS_POR_PEDIDO,
             "startRow": inicio,
         }
-        respuesta = servicio.searchanalytics().query(siteUrl=SITIO, body=cuerpo).execute()
+        # num_retries: reintenta solo si Google responde 5xx o 429 (error pasajero)
+        respuesta = servicio.searchanalytics().query(siteUrl=SITIO, body=cuerpo).execute(num_retries=3)
         lote = respuesta.get("rows", [])
         filas.extend(lote)
         if len(lote) < FILAS_POR_PEDIDO:
@@ -78,7 +82,8 @@ def guardar_en_postgres(filas):
         for fila in filas
     ]
 
-    conexion = psycopg2.connect(os.environ["DATABASE_URL"])
+    # connect_timeout: Neon tarda en despertar si estuvo inactiva
+    conexion = psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=30)
     try:
         # "with conexion" guarda los cambios si todo salió bien
         # y los deshace si hubo un error

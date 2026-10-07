@@ -1,13 +1,15 @@
 import os
+from pathlib import Path
+
 import psycopg2
 from dotenv import load_dotenv
 
 load_dotenv()
 
-with open("schema.sql", encoding="utf-8") as f:
+with open(Path(__file__).parent / "schema.sql", encoding="utf-8") as f:
     sql = f.read()
 
-conn = psycopg2.connect(os.environ["DATABASE_URL"])
+conn = psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=30)
 cur = conn.cursor()
 cur.execute(sql)
 conn.commit()

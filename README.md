@@ -6,7 +6,7 @@ Sistema de monitoreo SEO construido con datos reales de Google Search Console, P
 
 - [x] **Etapa 1** — PostgreSQL local: carga manual de CSV de Search Console y primer análisis
 - [x] **Etapa 2** — Python trae los datos solo desde la API de Search Console
-- [ ] **Etapa 3** — Base en la nube y ejecución diaria automática
+- [ ] **Etapa 3** — Base en la nube y ejecución diaria automática *(base en Neon lista; falta automatizar la ejecución diaria)*
 - [ ] **Etapa 4** — Dashboard con la evolución, páginas que suben y páginas que bajan
 - [ ] **Etapa 5** — Capa de IA: detección de caídas con SQL y resumen semanal automático
 - [ ] **Etapa 6** — Documentación final y video demo
@@ -19,12 +19,14 @@ observatorio_seo/
 ├── sql/
 │   ├── 01_crear_tablas.sql   # Tablas de consultas y páginas (staging + finales)
 │   ├── 02_cargar_datos.sql   # Limpieza y carga de los CSV
-│   ├── 03_analisis.sql       # Consultas de análisis
-│   └── 04_creartabla_api.sql # Tabla para los datos de la API
+│   └── 03_analisis.sql       # Consultas de análisis
+├── schema.sql                # Tabla rendimiento_api (datos de la API)
+├── crear_tablas.py           # Crea las tablas de schema.sql en la base
 ├── cargar_datos_api.py       # Script que trae los datos de la API a PostgreSQL
-├── test_conexion.py          # Prueba de conexión con la API
-├── requirements.txt          # Librerías de Python necesarias
-├── .env.example              # Plantilla de configuración de la base de datos
+├── probar_searchconsole.py   # Prueba de conexión con la API de Search Console
+├── probar_db.py              # Prueba de conexión con la base de datos
+├── requirements.txt          # Librerías de Python necesarias (versiones fijas)
+├── .env.example              # Plantilla de configuración (DATABASE_URL)
 └── README.md
 ```
 
@@ -35,12 +37,23 @@ observatorio_seo/
    pip install -r requirements.txt
    ```
 2. Crear una cuenta de servicio en Google Cloud, habilitar la Google Search Console API, descargar la clave como `credenciales.json` y agregar el email de la cuenta como usuario en Search Console.
-3. Copiar `.env.example` como `.env` y completar los datos de conexión a PostgreSQL.
-4. Crear la tabla ejecutando `sql/04_creartabla_api.sql`.
+3. Copiar `.env.example` como `.env` y completar `DATABASE_URL` con la cadena de conexión a PostgreSQL (en Neon: *Connection string*).
+4. Crear la tabla:
+   ```
+   python crear_tablas.py
+   ```
 5. Ejecutar:
    ```
    python cargar_datos_api.py
    ```
+
+Para verificar cada conexión por separado: `python probar_searchconsole.py` (API) y `python probar_db.py` (base de datos).
+
+### Notas sobre los datos
+
+- **Los totales de la API son menores a los del CSV.** Al pedir la dimensión `query`, Search Console omite las búsquedas anonimizadas, por eso `SUM(clics)` de `rendimiento_api` da algo menos que `fechas.csv`.
+- **Una misma página puede aparecer dos veces** (con y sin `www`), porque la propiedad es de dominio. Conviene unificarlas al consultar, no al guardar.
+- **CTR y posición no se promedian.** Para agrupar, recalcular: CTR = `SUM(clics) / SUM(impresiones)`; posición ponderada por impresiones.
 
 ---
 
@@ -79,7 +92,7 @@ Reemplazar la exportación manual de CSV por un script de Python que se conecta 
 **Qué hice**
 
 1. **Autenticación con cuenta de servicio:** creé un proyecto en Google Cloud, habilité la Google Search Console API y generé una cuenta de servicio con permiso de solo lectura sobre la propiedad. Elegí una cuenta de servicio en lugar de OAuth porque permite que el script se ejecute sin iniciar sesión manualmente, algo necesario para automatizarlo en la Etapa 3.
-2. **Prueba de conexión:** escribí `test_conexion.py` para confirmar el acceso antes de construir el script completo.
+2. **Prueba de conexión:** escribí `probar_searchconsole.py` para confirmar el acceso antes de construir el script completo.
 3. **Nueva tabla `rendimiento_api`:** a diferencia de los CSV, la API entrega los datos día por día y combinando consulta y página. Diseñé una tabla con esas tres dimensiones y una restricción `UNIQUE (fecha, consulta, pagina)`.
 4. **Script de carga (`cargar_datos_api.py`):** trae los últimos 90 días de datos, dejando un margen de 3 días porque Search Console tarda en consolidar la información. Convierte el CTR de fracción (0.42) a porcentaje (42.00) para mantener el mismo formato que la Etapa 1.
 5. **Carga sin duplicados:** uso `INSERT ... ON CONFLICT DO UPDATE`. Si el script corre más de una vez sobre las mismas fechas, actualiza las filas existentes en lugar de repetirlas.
@@ -87,7 +100,7 @@ Reemplazar la exportación manual de CSV por un script de Python que se conecta 
 
 **Problemas que resolví**
 
-- **Bloqueo de Windows:** el Control inteligente de aplicaciones de Windows 11 bloqueó el archivo `.dll` que necesita la librería `psycopg`. En lugar de desactivar una protección de seguridad del sistema, reemplacé la librería por `pg8000`, un conector escrito íntegramente en Python que no depende de archivos `.dll`.
+- **Bloqueo de Windows:** el Control inteligente de aplicaciones de Windows 11 bloqueó el archivo `.dll` que necesita la librería `psycopg`. En lugar de desactivar una protección de seguridad del sistema, reemplacé la librería por `pg8000`, un conector escrito íntegramente en Python que no depende de archivos `.dll`. (Más adelante, en la Etapa 3, el proyecto pasó a `psycopg2-binary`, que es el que figura hoy en `requirements.txt` y funciona sin problema.)
 - **Conflicto de nombres:** antes de crear la tabla nueva, revisé su estructura con `information_schema.columns` y detecté que ya existía una tabla `rendimiento_diario` con los datos de la Etapa 1. En lugar de reemplazarla, creé `rendimiento_api` para conservar ese registro.
 
 **Resultado**
