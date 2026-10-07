@@ -4,12 +4,14 @@ Verifica que la cuenta de servicio tenga acceso a Search Console.
 Si funciona, imprime los sitios disponibles y su nivel de permiso.
 """
 
+from pathlib import Path
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # Autenticación con la cuenta de servicio (permiso de solo lectura)
 credenciales = service_account.Credentials.from_service_account_file(
-    "credenciales.json",
+    Path(__file__).parent / "credenciales.json",
     scopes=["https://www.googleapis.com/auth/webmasters.readonly"],
 )
 
