@@ -6,7 +6,7 @@ Sistema de monitoreo SEO construido con datos reales de Google Search Console, P
 
 - [x] **Etapa 1** — PostgreSQL local: carga manual de CSV de Search Console y primer análisis
 - [x] **Etapa 2** — Python trae los datos solo desde la API de Search Console
-- [ ] **Etapa 3** — Base en la nube y ejecución diaria automática *(base en Neon lista; falta automatizar la ejecución diaria)*
+- [x] **Etapa 3** — Base en la nube y ejecución semanal automática *(base en Neon lista; falta automatizar la ejecución semanal)*
 - [ ] **Etapa 4** — Dashboard con la evolución, páginas que suben y páginas que bajan
 - [ ] **Etapa 5** — Capa de IA: detección de caídas con SQL y resumen semanal automático
 - [ ] **Etapa 6** — Documentación final y video demo
@@ -20,8 +20,8 @@ observatorio_seo/
 │   ├── 01_crear_tablas.sql   # Tablas de consultas y páginas (staging + finales)
 │   ├── 02_cargar_datos.sql   # Limpieza y carga de los CSV
 │   └── 03_analisis.sql       # Consultas de análisis
-├── schema.sql                # Tabla rendimiento_api (datos de la API)
-├── crear_tablas.py           # Crea las tablas de schema.sql en la base
+├── schema.sql                # Tabla rendimiento_api (datos de la API) y vistas v_rendimiento / v_ventana
+├── crear_tablas.py           # Crea las tablas y vistas de schema.sql en la base
 ├── cargar_datos_api.py       # Script que trae los datos de la API a PostgreSQL
 ├── probar_searchconsole.py   # Prueba de conexión con la API de Search Console
 ├── probar_db.py              # Prueba de conexión con la base de datos
@@ -38,7 +38,7 @@ observatorio_seo/
    ```
 2. Crear una cuenta de servicio en Google Cloud, habilitar la Google Search Console API, descargar la clave como `credenciales.json` y agregar el email de la cuenta como usuario en Search Console.
 3. Copiar `.env.example` como `.env` y completar `DATABASE_URL` con la cadena de conexión a PostgreSQL (en Neon: *Connection string*).
-4. Crear la tabla:
+4. Crear la tabla y las vistas (se puede repetir sin problema):
    ```
    python crear_tablas.py
    ```
@@ -52,7 +52,8 @@ Para verificar cada conexión por separado: `python probar_searchconsole.py` (AP
 ### Notas sobre los datos
 
 - **Los totales de la API son menores a los del CSV.** Al pedir la dimensión `query`, Search Console omite las búsquedas anonimizadas, por eso `SUM(clics)` de `rendimiento_api` da algo menos que `fechas.csv`.
-- **Una misma página puede aparecer dos veces** (con y sin `www`), porque la propiedad es de dominio. Conviene unificarlas al consultar, no al guardar.
+- **Una misma página puede aparecer dos veces** (con y sin `www`), porque la propiedad es de dominio. Conviene unificarlas al consultar, no al guardar: las consultas de `sql/03_analisis.sql` leen la vista `v_rendimiento`, que las unifica.
+- **Las ventanas semanales terminan en `v_ventana.fin` (hoy − 3), no en hoy.** Search Console tarda 2-3 días en consolidar; si "los últimos 7 días" terminaran hoy, tendrían solo 5 días con datos contra 7 de la semana anterior y todo parecería una caída. Antes de analizar conviene correr `cargar_datos_api.py`: los días sin cargar se ven como 0.
 - **CTR y posición no se promedian.** Para agrupar, recalcular: CTR = `SUM(clics) / SUM(impresiones)`; posición ponderada por impresiones.
 
 ---
