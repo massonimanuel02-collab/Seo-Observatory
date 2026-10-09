@@ -1,0 +1,28 @@
+name: Ingesta semanal Search Console
+
+on:
+  schedule:
+    - cron: "0 9 * * 1"   # lunes 09:00 UTC (06:00 en Argentina)
+  workflow_dispatch:       # botón "Run workflow" para correrlo a mano
+
+permissions:
+  contents: read
+
+jobs:
+  ingesta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python cargar_datos_api.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+          # Trae los últimos ~10 días: los más recientes los GSC corrige después,
+          # y el upsert (UNIQUE fecha+consulta+página) pisa en vez de duplicar.
+          DIAS_ATRAS: "10"
