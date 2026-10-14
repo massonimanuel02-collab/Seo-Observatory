@@ -1,6 +1,7 @@
 # Credenciales y contraseñas: nunca se suben
 credenciales.json
 .env
+.streamlit/secrets.toml
 
 # Archivos temporales de Python
 __pycache__/

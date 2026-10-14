@@ -1,6 +1,7 @@
 """
 Observatorio SEO - Etapa 3
-Trae los datos de la API de Google Search Console y los guarda en PostgreSQL (Neon).
+Trae los datos de la API de Google Search Console (totales por día, por página y por
+consulta) y los guarda en PostgreSQL (Neon).
 """
 
 import json
@@ -24,6 +25,17 @@ DIAS_ATRAS = int(os.getenv("DIAS_ATRAS", "90"))  # cuántos días hacia atrás t
 SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
 FILAS_POR_PEDIDO = 25000  # máximo que permite la API por pedido
 
+# Tabla donde se guarda -> dimensiones que se piden a la API.
+# Pedir "query" hace que Search Console omita las consultas anónimas (en este sitio, ~70 % de
+# los clics), así que rendimiento_api suma menos que el panel. Los pedidos por "date" y por
+# "date" + "page" no las omiten: coinciden con el panel.
+CARGAS = {
+    "totales_diarios": ["date"],
+    "rendimiento_paginas": ["date", "page"],
+    "rendimiento_api": ["date", "query", "page"],
+}
+COLUMNA = {"date": "fecha", "query": "consulta", "page": "pagina"}  # dimensión de la API -> columna
+
 
 def conectar_search_console():
     """Se autentica con la cuenta de servicio y devuelve el cliente de la API."""
@@ -41,15 +53,15 @@ def conectar_search_console():
     return build("searchconsole", "v1", credentials=credenciales)
 
 
-def traer_datos(servicio, fecha_inicio, fecha_fin):
-    """Pide a la API los datos por fecha, consulta y página (con paginación)."""
+def traer_datos(servicio, dimensiones, fecha_inicio, fecha_fin):
+    """Pide a la API los datos agrupados por esas dimensiones (con paginación)."""
     filas = []
     inicio = 0
     while True:
         cuerpo = {
             "startDate": fecha_inicio.isoformat(),
             "endDate": fecha_fin.isoformat(),
-            "dimensions": ["date", "query", "page"],
+            "dimensions": dimensiones,
             "rowLimit": FILAS_POR_PEDIDO,
             "startRow": inicio,
         }
@@ -63,47 +75,47 @@ def traer_datos(servicio, fecha_inicio, fecha_fin):
     return filas
 
 
-def guardar_en_postgres(filas):
-    """Inserta las filas en Neon. Si ya existen, las actualiza."""
-    if not filas:
+def guardar_en_postgres(datos):
+    """Inserta en Neon las filas de cada tabla ({tabla: filas}). Si ya existen, las actualiza."""
+    if not any(datos.values()):
         print("No hay filas para guardar.")
         return
-
-    valores = [
-        (
-            date.fromisoformat(fila["keys"][0]),  # texto "2026-09-30" -> fecha
-            fila["keys"][1],                      # consulta
-            fila["keys"][2],                      # página
-            int(fila["clicks"]),
-            int(fila["impressions"]),
-            round(fila["ctr"] * 100, 2),          # la API da 0.42 -> guardamos 42.00
-            round(fila["position"], 2),
-        )
-        for fila in filas
-    ]
 
     # connect_timeout: Neon tarda en despertar si estuvo inactiva
     conexion = psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=30)
     try:
-        # "with conexion" guarda los cambios si todo salió bien
+        # "with conexion" guarda los cambios de las tres tablas si todo salió bien
         # y los deshace si hubo un error
         with conexion:
             with conexion.cursor() as cursor:
-                execute_values(
-                    cursor,
-                    """
-                    INSERT INTO rendimiento_api
-                        (fecha, consulta, pagina, clics, impresiones, ctr, posicion)
-                    VALUES %s
-                    ON CONFLICT (fecha, consulta, pagina) DO UPDATE SET
-                        clics = EXCLUDED.clics,
-                        impresiones = EXCLUDED.impresiones,
-                        ctr = EXCLUDED.ctr,
-                        posicion = EXCLUDED.posicion
-                    """,
-                    valores,
-                    page_size=1000,
-                )
+                for tabla, filas in datos.items():
+                    claves = ", ".join(COLUMNA[d] for d in CARGAS[tabla])  # lo que identifica una fila
+                    valores = [
+                        (
+                            date.fromisoformat(fila["keys"][0]),  # texto "2026-09-30" -> fecha
+                            *fila["keys"][1:],                    # consulta y/o página, si se pidieron
+                            int(fila["clicks"]),
+                            int(fila["impressions"]),
+                            round(fila["ctr"] * 100, 2),          # la API da 0.42 -> guardamos 42.00
+                            round(fila["position"], 2),
+                        )
+                        for fila in filas
+                    ]
+                    execute_values(
+                        cursor,
+                        f"""
+                        INSERT INTO {tabla}
+                            ({claves}, clics, impresiones, ctr, posicion)
+                        VALUES %s
+                        ON CONFLICT ({claves}) DO UPDATE SET
+                            clics = EXCLUDED.clics,
+                            impresiones = EXCLUDED.impresiones,
+                            ctr = EXCLUDED.ctr,
+                            posicion = EXCLUDED.posicion
+                        """,
+                        valores,
+                        page_size=1000,
+                    )
     finally:
         conexion.close()
 
@@ -115,10 +127,12 @@ def main():
 
     print(f"Trayendo datos del {fecha_inicio} al {fecha_fin}...")
     servicio = conectar_search_console()
-    filas = traer_datos(servicio, fecha_inicio, fecha_fin)
-    print(f"La API devolvió {len(filas)} filas.")
+    datos = {}
+    for tabla, dimensiones in CARGAS.items():
+        datos[tabla] = traer_datos(servicio, dimensiones, fecha_inicio, fecha_fin)
+        print(f"{tabla}: la API devolvió {len(datos[tabla])} filas.")
 
-    guardar_en_postgres(filas)
+    guardar_en_postgres(datos)
     print("Datos guardados en Neon.")
 
 
