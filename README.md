@@ -42,26 +42,46 @@ cargar_datos_api.py ──────────►  Neon PostgreSQL  ◄─�
 
 ## Sample output
 
-Real output (three of the CTR lines trimmed) of `SOLO_IMPRIMIR=1 python -m agente` for the week of October 17–23, 2026 (a dry run: nothing is saved or sent). It ran before the Anthropic key was set up, so it shows the numbers-only fallback. With the AI on, the email adds *Qué pasó* (what happened), *Qué haría* (up to three actions labeled 🤖 / 🤝 / 👤) and *Ojo* (caveats about the data).
+The first real email, sent on October 26, 2026 by the GitHub Actions run for the week of October 18–24 (two of the CTR lines trimmed). In short: clicks fell while impressions rose. Claude traces the drop to three blog posts and recommends rewriting the titles of two of them (🤝: the agent drafts, a person approves). For the third it says to keep watching before touching anything (🤖), since it started from very few clicks. Every number comes from SQL; the model only wrote the text around them.
 
 ```
-Observatorio SEO · Semana 17/10 – 23/10
+Observatorio SEO · Semana 18/10 – 24/10
 
 Los números
-- 21 clics (-12) · 1.171 impresiones (+142) · CTR 1,8 % (antes 3,2 %) · posición 5,6 (antes 5,0)
+- 21 clics (-11) · 1.191 impresiones (+171) · CTR 1,8 % (antes 3,1 %) · posición 5,6 (antes 5,0)
+
+Qué pasó
+- La semana cerró con menos clics aunque el sitio apareció más en Google, por eso el porcentaje de clics sobre impresiones cayó. La baja se concentra en notas del blog sobre amparos de salud, obras sociales y PAMI, y la home compensó en parte porque sumó clics. Importa porque esas notas son justo el tema central del estudio y siguen apareciendo en Google sin que la gente entre.
 
 Los datos de la semana
-- /blog/cuanto-tarda-un-amparo-de-salud baja de 14 a 6 clics
-- /blog/oser-iosper-no-cubre-medicamento baja de 5 a 0 clics
-- /blog/pami-rechazo-internacion-geriatrica baja de 4 a 0 clics
-- / (home) sube de 4 a 10 clics
-- "rechazo conformado pami" → /blog/pami-rechazo-internacion-geriatrica: 67 impresiones y 0 clics en 28 días, posición 10,2
-- "cuanto tarda un amparo de salud" → /blog/cuanto-tarda-un-amparo-de-salud: 28 impresiones y 0 clics en 28 días, posición 6,5
-- Consultas visibles (sin las anónimas) · marca: 0 clics y 7 impresiones (antes 1 y 4) · sin marca: 3 clics y 193 impresiones (antes 0 y 169)
+- /blog/cuanto-tarda-un-amparo-de-salud baja de 15 a 5 clics
+- /blog/oser-iosper-no-cubre-medicamento baja de 4 a 0 clics
+- /blog/pami-rechazo-internacion-geriatrica baja de 3 a 0 clics
+- / (home) sube de 4 a 11 clics
+- "employment lawyer" → / (home): 224 impresiones y 0 clics en 28 días, posición 1,4
+- "rechazo conformado pami" → /blog/pami-rechazo-internacion-geriatrica: 71 impresiones y 0 clics en 28 días, posición 10,1
+- "cuanto tarda un amparo de salud" → /blog/cuanto-tarda-un-amparo-de-salud: 29 impresiones y 0 clics en 28 días, posición 6,8
+- Consultas visibles (sin las anónimas) · marca: 0 clics y 7 impresiones (antes 1 y 4) · sin marca: 3 clics y 199 impresiones (antes 0 y 168)
 
-Sin análisis
-- La IA no respondió esta semana: van los números solos.
+Qué haría
+- 🤝 Reescribir el title y la meta description de /blog/cuanto-tarda-un-amparo-de-salud para que respondan directo la duda de cuánto tarda o demora un amparo, con las dos formas en que la gente lo busca, y sin prometer plazos que no se puedan garantizar. El agente prepara las opciones y una persona del estudio elige y aprueba.
+  Es la nota que más clics perdió y, además, la página ya aparece en buenos lugares para las búsquedas sobre el plazo del amparo sin que nadie haga clic. Eso sugiere que el título que se ve en Google no convence, más que un problema de posición.
+  Dato: /blog/cuanto-tarda-un-amparo-de-salud baja de 15 a 5 clics
+- 🤝 Reescribir el title y la meta description de /blog/pami-rechazo-internacion-geriatrica usando las palabras que la gente escribe, como "rechazo conformado" y "rechazo PAMI", y dejando claro que la nota explica qué hacer ante ese rechazo. El agente propone, una persona revisa el enfoque jurídico y aprueba.
+  La página aparece para esas búsquedas, pero en el borde de la primera página y sin clics, y además perdió todo el tráfico que tenía la semana anterior. Un título más alineado con lo que busca la gente es el cambio más barato para probar.
+  Dato: "rechazo conformado pami" → /blog/pami-rechazo-internacion-geriatrica: 71 impresiones y 0 clics en 28 días, posición 10,1
+- 🤖 Seguir midiendo /blog/oser-iosper-no-cubre-medicamento la próxima semana y avisar si sigue sin clics, antes de tocar el contenido.
+  Pasó de tener algún clic a ninguno, pero partía de muy poco volumen. Conviene confirmar si es una caída real o una oscilación normal antes de invertir tiempo en reescribirla.
+  Dato: /blog/oser-iosper-no-cubre-medicamento baja de 4 a 0 clics
+- 🤖 lo hace el agente · 🤝 el agente lo prepara y vos lo aprobás · 👤 lo hacés vos
+
+Ojo
+- Las notas del blog que bajaron partían de muy pocos clics, así que parte de la caída puede ser variación normal y no pérdida de posiciones; sobre todo las dos que quedaron en cero.
+- La suba de impresiones probablemente se explique en parte por búsquedas en inglés que llegan a la home y no hacen clic; eso empuja hacia abajo el porcentaje de clics sin que sea un problema de las páginas en español.
+- Los hallazgos de oportunidad miran un período más largo que la semana, así que sirven para elegir qué páginas mejorar, no para explicar la caída de estos días.
 ```
+
+If the AI call fails, the same email goes out with the numbers alone and a note saying so.
 
 ## Roadmap
 
@@ -71,7 +91,7 @@ Sin análisis
 | 2 | Python ingestion straight from the Search Console API | ✅ Done |
 | 3 | Cloud database (Neon) and a weekly automatic run on GitHub Actions | ✅ Done |
 | 4 | Streamlit dashboard: trend, pages going up and down, read-only role | ✅ Done |
-| 5a | Weekly AI summary: SQL findings → Claude → email | 🚧 Built and tested; going live once its API keys are set |
+| 5a | Weekly AI summary: SQL findings → Claude → email | ✅ Done, live since October 26, 2026 |
 | 5b | Recommendations become tracked tasks; agent state in LangGraph | 🗓️ Planned |
 | 5c | The agent opens pull requests on the client's site; a person reviews and merges | 🗓️ Planned |
 | 5d | Results loop: each finished task measured 28 days before vs. after | 🗓️ Planned |
@@ -295,7 +315,7 @@ As of October 9, 2026 the numbers match the Search Console panel: 96 clicks, 3,1
 </details>
 
 <details>
-<summary><b>Stage 5a (in progress): Weekly AI summary</b></summary>
+<summary><b>Stage 5a: Weekly AI summary</b></summary>
 
 **Goal**
 Every Monday, an email with the numbers, a diagnosis and up to three recommendations, each labeled 🤖 (the agent does it), 🤝 (the agent prepares it and a person approves) or 👤 (a person does it).
@@ -316,8 +336,13 @@ Every Monday, an email with the numbers, a diagnosis and up to three recommendat
 - **Thresholds calibrated on real data:** the week to October 23 had 21 clicks in total, so a page has to move at least 3 clicks and a new query needs at least 5 impressions to be reported.
 - **Incomplete window** (fewer than 14 days with data): no comparison and no AI call; the email goes out with a warning.
 
-**Pending**
-API keys and GitHub secrets, and the first real run with the AI on.
+**Problems I solved**
+
+- **Caveats nobody would read:** in the first dry run with the AI on, the "Ojo" section restated the general data rules (anonymized queries, the Search Console delay). Those would come back every Monday and the reader would learn to skip the section. I changed `reglas_seo.md` so caveats cover only what changes the reading of that particular week, three at most. Since the prompt version is a hash of that file, the stored diagnoses record the change on their own.
+- **Testing email before paying for the AI:** I sent a one-off email through Resend with the week's real numbers and no AI call, so delivery was confirmed before any Anthropic credits were loaded.
+
+**Result**
+On October 26, 2026 the first manual run on GitHub Actions went green in under two minutes: ingestion first, then the agent. Claude returned a diagnosis, three recommendations and three week-specific caveats; the email arrived, and the diagnosis is stored in `diagnosticos` with the model and the prompt version. From then on it runs on its own every Monday.
 
 **Skills:** Claude API (structured outputs) · Pydantic · prompt design · idempotent jobs · PostgreSQL roles (least privilege) · email delivery (Resend) · testing with mocks
 
