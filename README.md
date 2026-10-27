@@ -1,196 +1,324 @@
-# Observatorio SEO
+# SEO Observatory + AI Marketing & Finance Agent
 
-Sistema de monitoreo SEO construido con datos reales de Google Search Console, PostgreSQL y Python. Proyecto de aprendizaje desarrollado por etapas a lo largo de ~6 meses, usando como caso real el sitio de Estudio Jurídico Ríos.
+**An end-to-end SEO monitoring pipeline with an AI marketing agent on top, built stage by stage on real Google Search Console data from a law firm in Paraná, Argentina.**
 
-## Etapas del proyecto
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white)
+![Claude](https://img.shields.io/badge/Claude-Sonnet_5.5-D97757?logo=anthropic&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-dashboard-FF4B4B?logo=streamlit&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-weekly_cron-2088FF?logo=githubactions&logoColor=white)
 
-- [x] **Etapa 1** — PostgreSQL local: carga manual de CSV de Search Console y primer análisis
-- [x] **Etapa 2** — Python trae los datos solo desde la API de Search Console
-- [x] **Etapa 3** — Base en la nube y ejecución semanal automática
-- [x] **Etapa 4** — Dashboard con la evolución, páginas que suben y páginas que bajan
-- [ ] **Etapa 5** — Capa de IA: detección de caídas con SQL y resumen semanal automático
-- [ ] **Etapa 6** — Documentación final y video demo
+Every Monday a GitHub Actions job pulls the week's Search Console data into PostgreSQL. SQL works out what changed: pages gaining and losing clicks, searches with many impressions and almost no clicks, new queries. An AI agent then turns those findings into a short email: what happened, why it matters and up to three next steps, each labeled with who should do it (the agent, the agent with human approval, or a person).
 
-## Estructura del repositorio
+The client is Estudio Jurídico Ríos (`estudiojuridicorios.com.ar`), a small law firm with about 25 clicks a week. That low volume makes it a good test of whether a pipeline can tell signal from noise.
+
+> Code, comments and the weekly email are in Spanish, the client's language. Full design and decision record (in Spanish): [`arquitectura-agente-observatorio.md`](arquitectura-agente-observatorio.md).
+
+## Highlights
+
+- **Numbers that match the source of truth.** The dashboard showed 26 clicks where Search Console showed 96. I traced it to the API silently dropping anonymized queries (about 70 % of clicks on this site) whenever the `query` dimension is requested, and redesigned ingestion into three API cuts. Totals now match the Search Console panel exactly (96 clicks, 3,199 impressions).
+- **SQL computes, the AI interprets.** Every number in the email comes from SQL. The model returns fixed-shape JSON validated with Pydantic, and each recommendation must point to a finding ID; recommendations that cite a finding that doesn't exist are dropped.
+- **There is always a fallback.** If the AI fails, the email goes out with the numbers alone. If the email fails, the diagnosis is already saved in Postgres and the next run resends it, without calling the AI again and without duplicates (`UNIQUE` constraint plus an idempotency key).
+- **Least privilege.** Ingestion, dashboard and agent each use their own Postgres role. The dashboard can read two objects; the agent can read three and write to one table, and cannot delete.
+- **Honest statistics at low volume.** Weekly windows end on the last loaded day (Search Console lags 2–3 days), URL variants are merged, CTR and position are recomputed instead of averaged, and changes below a threshold aren't reported: at this volume one click is ±100 %.
+- **Tests without infrastructure.** The dashboard and agent tests run with the database, the LLM and the email API mocked.
+
+## Architecture
+
+```
+Search Console API
+       │   GitHub Actions, every Monday 09:00 UTC
+       ▼
+cargar_datos_api.py ──────────►  Neon PostgreSQL  ◄──────────  app.py
+(ingestion, 3 API cuts)          data tables + views           Streamlit dashboard
+                                 diagnosticos                  (read-only role)
+                                     │      ▲
+                         reads data  ▼      │  saves the diagnosis
+                                 python -m agente   (runs only if ingestion succeeded)
+                                 detectar.py   → SQL findings, each with an ID
+                                 estratega.py  → Claude Sonnet, validated JSON
+                                 mail.py       → weekly email via Resend
+```
+
+## Sample output
+
+Real output (three of the CTR lines trimmed) of `SOLO_IMPRIMIR=1 python -m agente` for the week of October 17–23, 2026 (a dry run: nothing is saved or sent). It ran before the Anthropic key was set up, so it shows the numbers-only fallback. With the AI on, the email adds *Qué pasó* (what happened), *Qué haría* (up to three actions labeled 🤖 / 🤝 / 👤) and *Ojo* (caveats about the data).
+
+```
+Observatorio SEO · Semana 17/10 – 23/10
+
+Los números
+- 21 clics (-12) · 1.171 impresiones (+142) · CTR 1,8 % (antes 3,2 %) · posición 5,6 (antes 5,0)
+
+Los datos de la semana
+- /blog/cuanto-tarda-un-amparo-de-salud baja de 14 a 6 clics
+- /blog/oser-iosper-no-cubre-medicamento baja de 5 a 0 clics
+- /blog/pami-rechazo-internacion-geriatrica baja de 4 a 0 clics
+- / (home) sube de 4 a 10 clics
+- "rechazo conformado pami" → /blog/pami-rechazo-internacion-geriatrica: 67 impresiones y 0 clics en 28 días, posición 10,2
+- "cuanto tarda un amparo de salud" → /blog/cuanto-tarda-un-amparo-de-salud: 28 impresiones y 0 clics en 28 días, posición 6,5
+- Consultas visibles (sin las anónimas) · marca: 0 clics y 7 impresiones (antes 1 y 4) · sin marca: 3 clics y 193 impresiones (antes 0 y 169)
+
+Sin análisis
+- La IA no respondió esta semana: van los números solos.
+```
+
+## Roadmap
+
+| Stage | What it adds | Status |
+|---|---|---|
+| 1 | Local PostgreSQL: manual Search Console CSV import and first analysis | ✅ Done |
+| 2 | Python ingestion straight from the Search Console API | ✅ Done |
+| 3 | Cloud database (Neon) and a weekly automatic run on GitHub Actions | ✅ Done |
+| 4 | Streamlit dashboard: trend, pages going up and down, read-only role | ✅ Done |
+| 5a | Weekly AI summary: SQL findings → Claude → email | 🚧 Built and tested; going live once its API keys are set |
+| 5b | Recommendations become tracked tasks; agent state in LangGraph | 🗓️ Planned |
+| 5c | The agent opens pull requests on the client's site; a person reviews and merges | 🗓️ Planned |
+| 5d | Results loop: each finished task measured 28 days before vs. after | 🗓️ Planned |
+| 5e | Published dashboard with an agent tab to approve or discard tasks | 🗓️ Planned |
+| 6 | GA4 conversions and **finance**: leads per week, cost per lead, ROI | 🗓️ Planned |
+| 7 | Multi-client: one pipeline, many sites | 🗓️ Planned |
+
+## Tech stack
+
+Python 3.12 · PostgreSQL on Neon · SQL (CTEs, views, `FULL JOIN`, `generate_series`, upserts) · Google Search Console API · GitHub Actions · Streamlit · Claude API (structured outputs with Pydantic) · Resend · pandas · SQLAlchemy · psycopg2
+
+## Repository structure
 
 ```
 observatorio_seo/
 ├── .github/workflows/
-│   └── semanal.yml           # Ingesta automática: cada lunes corre cargar_datos_api.py (Etapa 3)
-├── datos/                    # Exportaciones CSV de Search Console (Etapa 1)
+│   └── semanal.yml           # Every Monday: ingestion job, then the agent job
+├── datos/                    # Search Console CSV exports (Stage 1)
 ├── sql/
-│   ├── 01_crear_tablas.sql   # Tablas de consultas y páginas (staging + finales)
-│   ├── 02_cargar_datos.sql   # Limpieza y carga de los CSV
-│   └── 03_analisis.sql       # Consultas de análisis
-├── schema.sql                # Tablas de la API (totales_diarios, rendimiento_paginas, rendimiento_api) y sus vistas
-├── crear_tablas.py           # Crea las tablas y vistas de schema.sql en la base
-├── cargar_datos_api.py       # Script que trae los datos de la API a PostgreSQL
-├── app.py                    # Dashboard en Streamlit (Etapa 4)
-├── test_app.py               # Prueba del dashboard, sin base de datos
-├── probar_searchconsole.py   # Prueba de conexión con la API de Search Console
-├── probar_db.py              # Prueba de conexión con la base de datos
-├── requirements.txt          # Librerías de Python necesarias (versiones fijas)
-├── .env.example              # Plantilla de configuración (DATABASE_URL)
+│   ├── 01_crear_tablas.sql   # Query and page tables (staging + final)
+│   ├── 02_cargar_datos.sql   # CSV cleaning and loading
+│   └── 03_analisis.sql       # Analysis queries
+├── schema.sql                # API tables, views and the agent's diagnosticos table
+├── crear_tablas.py           # Applies schema.sql to the database
+├── cargar_datos_api.py       # Pulls the Search Console API into PostgreSQL
+├── agente/                   # Weekly AI summary (Stage 5a): python -m agente
+│   ├── detectar.py           # Runs the SQL and builds the week's findings
+│   ├── estratega.py          # Claude interprets the findings (validated JSON)
+│   ├── reglas_seo.md         # The model's instructions: data rules and output format
+│   └── mail.py               # Builds the email and sends it with Resend
+├── app.py                    # Streamlit dashboard (Stage 4)
+├── test_app.py               # Dashboard tests, no database needed
+├── test_agente.py            # Agent tests, no database, AI or email needed
+├── probar_searchconsole.py   # Search Console API connection check
+├── probar_db.py              # Database connection check
+├── requirements.txt          # Pinned Python dependencies
+├── .env.example              # Configuration template
 └── README.md
 ```
 
-## Cómo usarlo
+## Getting started
 
-1. Instalar las librerías:
+1. Install the dependencies:
    ```
    pip install -r requirements.txt
    ```
-2. Crear una cuenta de servicio en Google Cloud, habilitar la Google Search Console API, descargar la clave como `credenciales.json` y agregar el email de la cuenta como usuario en Search Console.
-3. Copiar `.env.example` como `.env` y completar `DATABASE_URL` con la cadena de conexión a PostgreSQL (en Neon: *Connection string*).
-4. Crear las tablas y las vistas (se puede repetir sin problema):
+2. Create a Google Cloud service account, enable the Google Search Console API, download its key as `credenciales.json` and add the account's email as a user in Search Console.
+3. Copy `.env.example` to `.env` and fill in `DATABASE_URL` with the PostgreSQL connection string (in Neon: *Connection string*).
+4. Create the tables and views (safe to run again):
    ```
    python crear_tablas.py
    ```
-5. Ejecutar:
+5. Load the data:
    ```
    python cargar_datos_api.py
    ```
-6. Ver el dashboard (Etapa 4). Crear una vez, en la base, un usuario de solo lectura:
+6. Dashboard. Create a read-only user once, in the database:
    ```sql
-   CREATE ROLE dashboard_ro WITH LOGIN PASSWORD 'una-clave-larga';
+   CREATE ROLE dashboard_ro WITH LOGIN PASSWORD 'a-long-password';
    GRANT CONNECT ON DATABASE neondb TO dashboard_ro;
    GRANT USAGE ON SCHEMA public TO dashboard_ro;
    GRANT SELECT ON totales_diarios, v_rendimiento_paginas TO dashboard_ro;
    ```
-   Guardar su conexión en `.streamlit/secrets.toml` (no se sube al repositorio). El `+psycopg2` es necesario:
+   Save its connection in `.streamlit/secrets.toml` (never committed). The `+psycopg2` is required:
    ```toml
    [connections.neon]
-   url = "postgresql+psycopg2://dashboard_ro:una-clave-larga@HOST/neondb?sslmode=require"
+   url = "postgresql+psycopg2://dashboard_ro:a-long-password@HOST/neondb?sslmode=require"
    ```
-   Y abrirlo:
+   And open it:
    ```
    streamlit run app.py
    ```
+7. Weekly AI summary. Create the agent's role once, with SQL (roles created from the Neon console inherit `neon_superuser`, which can read and write everything):
+   ```sql
+   CREATE ROLE agente_rw WITH LOGIN PASSWORD 'another-long-password';
+   GRANT CONNECT ON DATABASE neondb TO agente_rw;
+   GRANT USAGE ON SCHEMA public TO agente_rw;
+   GRANT SELECT ON totales_diarios, v_rendimiento_paginas, v_rendimiento TO agente_rw;
+   GRANT SELECT, INSERT, UPDATE ON diagnosticos TO agente_rw;
+   GRANT USAGE ON SEQUENCE diagnosticos_id_seq TO agente_rw;
+   ```
+   Fill in `ANTHROPIC_API_KEY`, `RESEND_API_KEY` and `MAIL_DESTINO` in `.env` (without a verified domain, Resend only sends to your own account's address), then try it without writing to the database or sending anything:
+   ```
+   SOLO_IMPRIMIR=1 python -m agente
+   ```
 
-Para que la ingesta corra sola cada lunes (GitHub Actions), cargar `DATABASE_URL` y `GOOGLE_CREDENTIALS_JSON` (el contenido de `credenciales.json`) en *Settings → Secrets and variables → Actions*.
+To run every Monday on GitHub Actions, add these under *Settings → Secrets and variables → Actions*: `DATABASE_URL` and `GOOGLE_CREDENTIALS_JSON` (the contents of `credenciales.json`) for ingestion; `AGENTE_DATABASE_URL` (the `agente_rw` connection), `ANTHROPIC_API_KEY`, `RESEND_API_KEY` and `MAIL_DESTINO` for the agent.
 
-Para verificar cada conexión por separado: `python probar_searchconsole.py` (API) y `python probar_db.py` (base de datos). La prueba del dashboard no necesita base: `python test_app.py`.
+Connection checks: `python probar_searchconsole.py` (API) and `python probar_db.py` (database). The tests need neither: `python test_app.py` and `python test_agente.py`.
 
-### Notas sobre los datos
+## Notes on the data
 
-- **`rendimiento_api` suma mucho menos que el panel de Search Console; `totales_diarios` y `rendimiento_paginas` no.** Al pedir la dimensión `query`, Search Console omite las consultas anónimas, que en este sitio son ~70 % de los clics (al 9 de octubre: 26 clics por consulta contra 96 en total). Por eso los totales y las páginas se guardan con pedidos aparte, sin consulta, y coinciden con el panel. `rendimiento_api` sirve para analizar consultas, sabiendo que cubre solo las visibles. Las impresiones por página suman ~1 % más que los totales, porque la API cuenta por página; los clics coinciden.
-- **Una misma página puede aparecer dos veces** (con y sin `www`), porque la propiedad es de dominio. Conviene unificarlas al consultar, no al guardar: las consultas de `sql/03_analisis.sql` leen las vistas `v_rendimiento` y `v_rendimiento_paginas`, que las unifican.
-- **Las ventanas semanales terminan en `v_ventana.fin` (hoy − 3), no en hoy.** Search Console tarda 2-3 días en consolidar; si "los últimos 7 días" terminaran hoy, tendrían solo 5 días con datos contra 7 de la semana anterior y todo parecería una caída. Antes de analizar conviene correr `cargar_datos_api.py`: los días sin cargar se ven como 0.
-- **El dashboard ancla su ventana al último día cargado** (`MAX(fecha)`), no a `v_ventana.fin`. Se mira cualquier día de la semana y la ingesta es semanal: con hoy − 3 la ventana actual incluiría días todavía sin cargar.
-- **CTR y posición no se promedian.** Para agrupar, recalcular: CTR = `SUM(clics) / SUM(impresiones)`; posición ponderada por impresiones.
+- **`rendimiento_api` adds up to far less than the Search Console panel; `totales_diarios` and `rendimiento_paginas` don't.** When the `query` dimension is requested, Search Console omits anonymized queries, about 70 % of clicks on this site (on October 9: 26 clicks by query against 96 in total). So totals and pages are stored from separate requests without the query, and they match the panel. `rendimiento_api` is for analyzing queries, knowing it only covers the visible ones. Impressions by page add up to about 1 % more than the totals, because the API counts per page; clicks match.
+- **The same page can show up more than once** (with and without `www`, `http` or `https`, trailing `/`), because it's a domain property. They're merged when querying, not when storing: the analysis reads the `v_rendimiento` and `v_rendimiento_paginas` views.
+- **The windows in `sql/03_analisis.sql` end on `v_ventana.fin` (today − 3), not today.** Search Console takes 2–3 days to consolidate; if "the last 7 days" ended today they'd hold 5 days of data against 7 for the week before, and everything would look like a drop. Run `cargar_datos_api.py` before analyzing: days not yet loaded show as 0.
+- **The dashboard and the agent anchor their windows to the last loaded day** (`MAX(fecha)`), not to `v_ventana.fin`. They can run on any day of the week while ingestion is weekly: with today − 3, the current window would include days not loaded yet.
+- **CTR and position are never averaged.** When grouping, recompute them: CTR = `SUM(clics) / SUM(impresiones)`; position weighted by impressions.
 
----
+## Build log
 
-## Etapa 1: Carga y primer análisis de Search Console en PostgreSQL
+Each stage, as it happened: what I did, the problems I ran into and what came out of it.
 
-**Objetivo**
-Construir la base del sistema de monitoreo usando datos reales de Google Search Console del sitio de Estudio Jurídico Ríos y PostgreSQL como base de datos.
+<details>
+<summary><b>Stage 1: Loading and first analysis of Search Console data in PostgreSQL</b></summary>
 
-**Qué hice**
+**Goal**
+Build the base of the monitoring system with real Google Search Console data from Estudio Jurídico Ríos's website, using PostgreSQL as the database.
 
-1. **Diseño de tablas:** creé las tablas `consultas` y `paginas` con tipos de datos adecuados para cada métrica (clics, impresiones, CTR y posición).
-2. **Importación con tablas borrador (staging):** las exportaciones de Search Console traen el CTR como texto con `%` (ej. `3.45%`), lo que impide cargarlo directo en una columna numérica. Para resolverlo, importé primero los CSV a tablas `_raw` con todas las columnas en texto.
-3. **Limpieza y transformación:** pasé los datos a las tablas finales con `INSERT ... SELECT`, quitando el `%` con `REPLACE` y convirtiendo tipos con `::INTEGER` y `::NUMERIC`.
-4. **Validación de datos:** al verificar con `COUNT(*)`, detecté que la tabla `paginas` tenía 82 filas en lugar de 4: se habían cargado las consultas por error. Vacié las tablas con `TRUNCATE`, repetí la importación y confirmé el resultado correcto.
-5. **Análisis:** escribí consultas SQL para identificar las búsquedas con más clics, oportunidades de CTR y keywords cerca de la primera página de resultados.
+**What I did**
 
-**Hallazgos**
+1. **Table design:** created the `consultas` (queries) and `paginas` (pages) tables, with a suitable data type for each metric (clicks, impressions, CTR and position).
+2. **Import through staging tables:** Search Console exports carry CTR as text with a `%` (e.g. `3.45%`), which can't be loaded straight into a numeric column. So I first imported the CSVs into `_raw` tables with every column as text.
+3. **Cleaning and transformation:** moved the data into the final tables with `INSERT ... SELECT`, stripping the `%` with `REPLACE` and casting with `::INTEGER` and `::NUMERIC`.
+4. **Data validation:** checking with `COUNT(*)`, I found the `paginas` table had 82 rows instead of 4: the queries file had been loaded by mistake. I emptied the tables with `TRUNCATE`, redid the import and confirmed the result.
+5. **Analysis:** wrote SQL queries to find the searches bringing the most clicks, CTR opportunities and keywords close to the first page of results.
 
-- **Dependencia de la marca:** de las 26 visitas desde Google, 24 (92%) llegaron por la búsqueda del nombre del estudio. El sitio hoy atrae sobre todo a personas que ya lo conocían.
-- **Primera señal de captación local:** "abogados laborales en parana" aparece en posición 3. Es una búsqueda sin marca, de alguien que todavía no eligió abogado, y es la principal oportunidad de crecimiento.
-- **Búsqueda genérica con margen:** "estudio juridico" suma 40 impresiones en posición 6. Subir algunos puestos aumentaría los clics de forma notable.
-- **Tráfico irrelevante identificado:** "medical malpractice lawyer" (en inglés) genera impresiones que no corresponden al público del estudio, por lo que se excluye de las conclusiones.
+**Findings**
 
-**Conclusión**
-El sitio es nuevo y su visibilidad orgánica depende casi por completo de la marca, pero ya empieza a aparecer en búsquedas locales de servicios legales. La estrategia recomendada es crear contenido específico por área de práctica en Paraná, empezando por derecho laboral.
+- **Brand dependence:** of 26 visits from Google, 24 (92 %) came from searching the firm's name. Today the site mostly attracts people who already knew it.
+- **First sign of local acquisition:** "abogados laborales en parana" (employment lawyers in Paraná) ranks 3rd. It's a non-brand search from someone who hasn't chosen a lawyer yet, and the main growth opportunity.
+- **A generic search with room to grow:** "estudio juridico" (law firm) has 40 impressions at position 6. Climbing a few spots would noticeably increase clicks.
+- **Irrelevant traffic identified:** "medical malpractice lawyer" (in English) generates impressions that don't match the firm's audience, so it's left out of the conclusions.
 
-**Habilidades aplicadas:** PostgreSQL · SQL (CREATE, INSERT…SELECT, TRUNCATE, casting) · limpieza de datos · validación · Google Search Console · análisis SEO
+**Conclusion**
+The site is new and its organic visibility depends almost entirely on the brand, but it's starting to appear in local legal-services searches. The recommended strategy is to create specific content for each practice area in Paraná, starting with employment law.
 
----
+**Skills:** PostgreSQL · SQL (CREATE, INSERT…SELECT, TRUNCATE, casting) · data cleaning · validation · Google Search Console · SEO analysis
 
-## Etapa 2: Carga automática desde la API de Search Console
+</details>
 
-**Objetivo**
-Reemplazar la exportación manual de CSV por un script de Python que se conecta directamente a la API de Google Search Console y guarda los datos en PostgreSQL.
+<details>
+<summary><b>Stage 2: Automatic loading from the Search Console API</b></summary>
 
-**Qué hice**
+**Goal**
+Replace the manual CSV export with a Python script that connects directly to the Google Search Console API and stores the data in PostgreSQL.
 
-1. **Autenticación con cuenta de servicio:** creé un proyecto en Google Cloud, habilité la Google Search Console API y generé una cuenta de servicio con permiso de solo lectura sobre la propiedad. Elegí una cuenta de servicio en lugar de OAuth porque permite que el script se ejecute sin iniciar sesión manualmente, algo necesario para automatizarlo en la Etapa 3.
-2. **Prueba de conexión:** escribí `probar_searchconsole.py` para confirmar el acceso antes de construir el script completo.
-3. **Nueva tabla `rendimiento_api`:** a diferencia de los CSV, la API entrega los datos día por día y combinando consulta y página. Diseñé una tabla con esas tres dimensiones y una restricción `UNIQUE (fecha, consulta, pagina)`.
-4. **Script de carga (`cargar_datos_api.py`):** trae los últimos 90 días de datos, dejando un margen de 3 días porque Search Console tarda en consolidar la información. Convierte el CTR de fracción (0.42) a porcentaje (42.00) para mantener el mismo formato que la Etapa 1.
-5. **Carga sin duplicados:** uso `INSERT ... ON CONFLICT DO UPDATE`. Si el script corre más de una vez sobre las mismas fechas, actualiza las filas existentes en lugar de repetirlas.
-6. **Protección de credenciales:** la clave de Google y la contraseña de la base viven en `credenciales.json` y `.env`, excluidos del repositorio con `.gitignore`. El repo incluye un `.env.example` como plantilla.
+**What I did**
 
-**Problemas que resolví**
+1. **Service-account authentication:** created a Google Cloud project, enabled the Search Console API and generated a service account with read-only access to the property. I chose a service account over OAuth because it lets the script run without a manual login, which the Stage 3 automation needs.
+2. **Connection test:** wrote `probar_searchconsole.py` to confirm access before building the full script.
+3. **New `rendimiento_api` table:** unlike the CSVs, the API returns data day by day, combining query and page. I designed a table with those three dimensions and a `UNIQUE (fecha, consulta, pagina)` constraint.
+4. **Loading script (`cargar_datos_api.py`):** pulls the last 90 days, leaving a 3-day margin because Search Console takes time to consolidate. It converts CTR from a fraction (0.42) to a percentage (42.00) to keep Stage 1's format.
+5. **Loading without duplicates:** `INSERT ... ON CONFLICT DO UPDATE`. If the script runs more than once over the same dates, it updates the existing rows instead of repeating them.
+6. **Credential protection:** the Google key and the database password live in `credenciales.json` and `.env`, excluded from the repository with `.gitignore`. The repo includes a `.env.example` template.
 
-- **Bloqueo de Windows:** el Control inteligente de aplicaciones de Windows 11 bloqueó el archivo `.dll` que necesita la librería `psycopg`. En lugar de desactivar una protección de seguridad del sistema, reemplacé la librería por `pg8000`, un conector escrito íntegramente en Python que no depende de archivos `.dll`. (Más adelante, en la Etapa 3, el proyecto pasó a `psycopg2-binary`, que es el que figura hoy en `requirements.txt` y funciona sin problema.)
-- **Conflicto de nombres:** antes de crear la tabla nueva, revisé su estructura con `information_schema.columns` y detecté que ya existía una tabla `rendimiento_diario` con los datos de la Etapa 1. En lugar de reemplazarla, creé `rendimiento_api` para conservar ese registro.
+**Problems I solved**
 
-**Resultado**
-En una sola ejecución, el script cargó 291 filas con los datos del 4 de julio al 2 de octubre de 2026, sin ninguna exportación manual.
+- **Windows blocked a library:** Windows 11 Smart App Control blocked the `.dll` that `psycopg` needs. Instead of turning off a system security protection, I switched to `pg8000`, a pure-Python connector with no `.dll` files. (In Stage 3 the project moved to `psycopg2-binary`, which is what `requirements.txt` lists today and works fine.)
+- **Name conflict:** before creating the new table I checked its structure with `information_schema.columns` and found an existing `rendimiento_diario` table holding Stage 1's data. Instead of replacing it, I created `rendimiento_api` to keep that record.
 
-**Habilidades aplicadas:** Python · API de Google Search Console · Google Cloud (cuentas de servicio) · PostgreSQL · SQL (UPSERT con ON CONFLICT, restricciones UNIQUE, information_schema) · manejo seguro de credenciales · resolución de problemas de entorno
+**Result**
+In a single run, the script loaded 291 rows covering July 4 to October 2, 2026, with no manual export.
 
----
+**Skills:** Python · Google Search Console API · Google Cloud (service accounts) · PostgreSQL · SQL (UPSERT with ON CONFLICT, UNIQUE constraints, information_schema) · secure credential handling · environment troubleshooting
 
-## Etapa 3: Base en la nube y ejecución semanal automática
+</details>
 
-**Objetivo**
-Sacar el sistema de mi computadora: guardar los datos en una base PostgreSQL en la nube y traerlos de la API todas las semanas, sin intervención manual.
+<details>
+<summary><b>Stage 3: Cloud database and an automatic weekly run</b></summary>
 
-**Qué hice**
+**Goal**
+Get the system off my computer: keep the data in a cloud PostgreSQL database and pull it from the API every week, with no manual steps.
 
-1. **Base en Neon:** creé un proyecto de PostgreSQL en Neon (versión 18, región São Paulo) y cambié el conector a `psycopg2-binary`. La cadena de conexión vive en la variable `DATABASE_URL`: en `.env` en mi computadora y como *Secret* en GitHub. El código no contiene ninguna contraseña.
-2. **Esquema versionado:** `schema.sql` define las tablas `totales_diarios`, `rendimiento_paginas` y `rendimiento_api` (esta con `UNIQUE (fecha, consulta, pagina)` y un índice por página y fecha), más sus vistas, y `crear_tablas.py` lo aplica en la base. Se puede correr las veces que haga falta sin romper nada.
-3. **El mismo script en mi computadora y en la nube:** `cargar_datos_api.py` lee la clave de Google de la variable `GOOGLE_CREDENTIALS_JSON` si existe (en GitHub Actions) y, si no, del archivo `credenciales.json`.
-4. **Carga más robusta:** pide a la API tres cortes (por fecha, por fecha + página y por fecha + consulta + página) e inserta cada uno por lotes con `execute_values`, todo dentro de una sola transacción (si algo falla, no queda nada a medias). La llamada a la API reintenta sola ante errores pasajeros de Google (5xx y 429).
-5. **Ejecución semanal con GitHub Actions:** `.github/workflows/semanal.yml` corre `cargar_datos_api.py` todos los lunes a las 09:00 UTC (06:00 en Argentina) y tiene un botón *Run workflow* para lanzarlo a mano. En cada corrida trae los últimos 10 días (`DIAS_ATRAS=10`): Search Console corrige los días recientes más tarde, y el `ON CONFLICT DO UPDATE` pisa los valores viejos sin duplicar. Usa permisos mínimos (`contents: read`) y un límite de 15 minutos.
-6. **Consultas de análisis sobre la API:** en `sql/03_analisis.sql` escribí las consultas 5 a 12: evolución diaria, tráfico de marca vs. sin marca, páginas que suben y bajan, posición por página, oportunidades de CTR, consultas nuevas y comparación contra la semana anterior.
+**What I did**
 
-**Problemas que resolví**
+1. **Neon database:** created a PostgreSQL project on Neon (version 18, São Paulo region) and switched the connector to `psycopg2-binary`. The connection string lives in the `DATABASE_URL` variable: in `.env` on my computer and as a *Secret* on GitHub. The code contains no passwords.
+2. **Versioned schema:** `schema.sql` defines the `totales_diarios`, `rendimiento_paginas` and `rendimiento_api` tables (the last one with `UNIQUE (fecha, consulta, pagina)` and an index on page and date) plus their views, and `crear_tablas.py` applies it to the database. It can run any number of times without breaking anything.
+3. **The same script locally and in the cloud:** `cargar_datos_api.py` reads the Google key from the `GOOGLE_CREDENTIALS_JSON` variable when it exists (on GitHub Actions) and from `credenciales.json` otherwise.
+4. **More robust loading:** it requests three cuts from the API (by date, by date + page, and by date + query + page) and inserts each in batches with `execute_values`, all in one transaction: if anything fails, nothing is left half-written. The API call retries on its own after transient Google errors (5xx and 429).
+5. **Weekly run on GitHub Actions:** `.github/workflows/semanal.yml` runs `cargar_datos_api.py` every Monday at 09:00 UTC (06:00 in Argentina) and has a *Run workflow* button to launch it by hand. Each run pulls the last 10 days (`DIAS_ATRAS=10`): Search Console revises recent days later, and `ON CONFLICT DO UPDATE` overwrites the old values without duplicating them. It uses minimal permissions (`contents: read`) and a 15-minute limit.
+6. **Analysis queries on the API data:** in `sql/03_analisis.sql` I wrote queries 5 to 12: daily trend, brand vs. non-brand traffic, pages going up and down, position per page, CTR opportunities, new queries and a comparison with the previous week.
 
-- **Neon se duerme:** la base se suspende cuando no se usa y tarda unos segundos en despertar. Todas las conexiones usan `connect_timeout=30` para esperar en lugar de fallar.
-- **Primera corrida en GitHub fallida:** el primer intento manual (9 de octubre) terminó con `FileNotFoundError: credenciales.json`. Los Secrets del repositorio todavía estaban vacíos, así que el script buscó el archivo local, que a propósito no se sube. Cargué `DATABASE_URL` y `GOOGLE_CREDENTIALS_JSON` y las dos corridas siguientes salieron bien.
-- **Ventanas que no coincidían con la ingesta:** "los últimos 7 días" terminaban en hoy, pero la ingesta llega hasta hoy − 3. La semana actual tenía 5 días con datos contra 7 de la anterior, y un sitio sin cambios aparecía con una caída falsa de ~29 %. Ahora las ventanas terminan en el último día con datos completos (`v_ventana.fin`).
-- **Una misma página con varias URLs:** con y sin `www`, `http` y `https`, con y sin `/` final. Los clics se repartían entre variantes y parecían subidas o caídas. La vista `v_rendimiento` las unifica al consultar, sin tocar lo que se guarda.
-- **Días sin filas que desaparecían:** la evolución diaria salteaba los días sin datos. Con `generate_series` ahora aparecen con 0.
+**Problems I solved**
 
-Probé estos tres últimos arreglos en una base temporal con datos sintéticos.
+- **Neon goes to sleep:** the database suspends when idle and takes a few seconds to wake up. Every connection uses `connect_timeout=30` to wait instead of failing.
+- **The first GitHub run failed:** the first manual attempt (October 9) ended with `FileNotFoundError: credenciales.json`. The repository Secrets were still empty, so the script looked for the local file, which on purpose is never uploaded. I added `DATABASE_URL` and `GOOGLE_CREDENTIALS_JSON` and the next two runs went fine.
+- **Windows that didn't match ingestion:** "the last 7 days" ended today, but ingestion only reaches today − 3. The current week had 5 days of data against 7 for the week before, and an unchanged site showed a fake drop of about 29 %. Windows now end on the last day with complete data (`v_ventana.fin`).
+- **One page, several URLs:** with and without `www`, `http` and `https`, with and without a trailing `/`. Clicks were split across variants and looked like rises or drops. The `v_rendimiento` view merges them at query time, without touching what's stored.
+- **Days without rows disappeared:** the daily trend skipped days with no data. With `generate_series` they now show up as 0.
 
-**Resultado**
-El lunes 12 de octubre de 2026 el workflow se ejecutó solo y dejó los datos al día en Neon (GitHub lo lanzó unas horas después de la hora programada, algo normal en los cron de Actions). En esa corrida, `rendimiento_api` quedó con 409 filas, del 24 de agosto al 9 de octubre de 2026.
+I tested these last three fixes on a temporary database with synthetic data.
 
-**Habilidades aplicadas:** PostgreSQL en la nube (Neon) · GitHub Actions (cron, Secrets) · Python (psycopg2, `execute_values`, reintentos) · SQL (vistas, `generate_series`, ventanas de tiempo) · variables de entorno y manejo de credenciales · diagnóstico a partir de logs de CI
+**Result**
+On Monday, October 12, 2026 the workflow ran on its own and brought Neon up to date (GitHub launched it a few hours after the scheduled time, which is normal for Actions cron jobs). After that run, `rendimiento_api` held 409 rows, from August 24 to October 9, 2026.
 
----
+**Skills:** Cloud PostgreSQL (Neon) · GitHub Actions (cron, Secrets) · Python (psycopg2, `execute_values`, retries) · SQL (views, `generate_series`, time windows) · environment variables and credential handling · diagnosing from CI logs
 
-## Etapa 4: Dashboard con la evolución y las páginas que suben y bajan
+</details>
 
-**Objetivo**
-Mostrar los datos de Neon en un tablero que se entienda de un vistazo, sin tener que correr consultas SQL.
+<details>
+<summary><b>Stage 4: Dashboard with the trend and the pages going up and down</b></summary>
 
-**Qué hice**
+**Goal**
+Show the data in Neon on a dashboard that makes sense at a glance, without running SQL queries.
 
-1. **Dashboard en Streamlit (`app.py`):** una página que lee Neon y muestra los cuatro números del período (clics, impresiones, CTR y posición media), la evolución diaria con un selector de impresiones o clics, y dos tablas: páginas que suben y páginas que bajan.
-2. **Cuentas correctas al agrupar:** el CTR se recalcula como clics / impresiones y la posición media se pondera por impresiones, como hace Search Console, en lugar de promediar promedios.
-3. **Páginas que suben y bajan:** compara los últimos 7 días con datos contra los 7 anteriores, con las URLs unificadas (`v_rendimiento_paginas`). Muestra los clics de antes y de ahora, no solo la diferencia: con pocos clics, 1 de diferencia ya es ±100 %. La ventana termina en el último día cargado y no en hoy − 3, porque el dashboard se mira cualquier día de la semana y la ingesta es semanal: con hoy − 3 la ventana actual incluiría días todavía sin cargar.
-4. **Usuario de solo lectura:** el dashboard se conecta con un rol propio, `dashboard_ro`, que solo puede hacer `SELECT` en `totales_diarios` y `v_rendimiento_paginas`. No usa la contraseña de dueño de la ingesta: si se filtrara, no podría borrar ni modificar nada. Comprobé que no puede escribir, crear tablas ni leer otras tablas o vistas.
-5. **Credenciales fuera del código:** la URL del rol vive en `.streamlit/secrets.toml`, excluido del repositorio con `.gitignore`.
-6. **Caché de 1 hora:** el dashboard no consulta la base en cada clic. Así Neon puede dormirse y se cuida el cómputo del plan gratuito.
-7. **Una prueba sin base de datos** (`test_app.py`): simula la conexión y comprueba los casos clave: tabla vacía, caída de la base, días sin filas y el orden de las páginas que suben y bajan.
+**What I did**
 
-**Problemas que resolví**
-Antes de dar la etapa por cerrada revisé el código y la arquitectura, y corregí:
+1. **Streamlit dashboard (`app.py`):** a page that reads Neon and shows the period's four headline numbers (clicks, impressions, CTR and average position), the daily trend with an impressions/clicks selector, and two tables: pages going up and pages going down.
+2. **Correct math when aggregating:** CTR is recomputed as clicks / impressions and average position is weighted by impressions, as Search Console does, instead of averaging averages.
+3. **Pages going up and down:** compares the last 7 days with data against the 7 before, with merged URLs (`v_rendimiento_paginas`). It shows clicks before and after, not only the difference: with few clicks, a difference of 1 is already ±100 %. The window ends on the last loaded day rather than today − 3, because the dashboard is viewed on any day of the week and ingestion is weekly: with today − 3, the current window would include days not loaded yet.
+4. **Read-only user:** the dashboard connects with its own role, `dashboard_ro`, which can only `SELECT` from `totales_diarios` and `v_rendimiento_paginas`. It doesn't use the ingestion owner's password: if it leaked, nothing could be deleted or modified. I verified it can't write, create tables or read any other table or view.
+5. **Credentials outside the code:** the role's URL lives in `.streamlit/secrets.toml`, excluded from the repository with `.gitignore`.
+6. **One-hour cache:** the dashboard doesn't query the database on every click. That lets Neon sleep and saves free-plan compute.
+7. **A test without a database** (`test_app.py`): it mocks the connection and checks the key cases: an empty table, the database being down, days without rows and the order of the pages going up and down.
 
-- **Dependencias faltantes:** `streamlit` y `sqlalchemy` no estaban en `requirements.txt`, así que la app no arrancaba en una instalación nueva.
-- **Una contraseña a un `git add .` de subirse:** `.streamlit/secrets.toml` no estaba en `.gitignore`.
-- **Base vacía o caída:** con la tabla vacía la página se rompía (fecha inválida y división por cero), y una caída de la base mostraba el error completo, con el SQL y el servidor. Ahora muestra un mensaje claro y el detalle queda en el log.
-- **Días sin datos que el gráfico saltaba:** unía los puntos vecinos con una línea, como si no faltara nada. Ahora esos días se rellenan con 0.
-- **Los números no coincidían con Search Console:** el dashboard mostraba 26 clics y 958 impresiones contra 96 y 3,2 mil del panel. Descarté que fuera el `siteUrl` (ya era la propiedad de dominio): al pedir la consulta, la API descarta las consultas anónimas, que en este sitio son ~70 % de los clics. Ahora la ingesta pide también los totales por fecha y por fecha + página, que sí las incluyen, y de ahí salen los números y las tablas: coinciden con el panel. Con los datos anteriores, además, la tabla de páginas mostraba lo contrario de la realidad: una caída de 2 clics a 0 cuando en verdad cuatro páginas del blog subían.
-- **Conector equivocado en SQLAlchemy 2.1:** al correr la app contra Neon vi que una URL `postgresql://` usa por defecto `psycopg` 3, y el proyecto usa `psycopg2`. Declaré el driver en la URL (`postgresql+psycopg2://`).
+**Problems I solved**
+Before closing the stage I reviewed the code and the architecture, and fixed:
 
-**Resultado**
-Al 9 de octubre de 2026 los números coinciden con el panel de Search Console: 96 clics, 3.199 impresiones, CTR de 3,0 % y posición media de 3,8. Con los datos hasta el 11 de octubre, el dashboard muestra 98 clics, 3.327 impresiones, CTR de 2,9 % y posición de 3,9. En la última semana cuatro páginas del blog subieron (la que más, de 0 a 9 clics) y la principal bajó de 3 a 2. Por ahora corre en mi computadora (`streamlit run app.py`); lo voy a publicar al terminar todas las etapas.
+- **Missing dependencies:** `streamlit` and `sqlalchemy` weren't in `requirements.txt`, so the app wouldn't start on a fresh install.
+- **A password one `git add .` away from being uploaded:** `.streamlit/secrets.toml` wasn't in `.gitignore`.
+- **Empty or unreachable database:** with an empty table the page broke (invalid date and division by zero), and a database outage showed the full error, including the SQL and the server. Now it shows a clear message and the details go to the log.
+- **Days without data the chart skipped:** it joined the neighboring points with a line, as if nothing were missing. Those days are now filled with 0.
+- **The numbers didn't match Search Console:** the dashboard showed 26 clicks and 958 impressions against 96 and 3.2k in the panel. I ruled out the `siteUrl` (it was already the domain property): when the query is requested, the API drops anonymized queries, about 70 % of clicks on this site. Ingestion now also requests totals by date and by date + page, which do include them, and the numbers and tables come from there: they match the panel. With the old data the pages table even showed the opposite of reality: a drop from 2 clicks to 0, when in fact four blog pages were going up.
+- **The wrong driver in SQLAlchemy 2.1:** running the app against Neon showed that a `postgresql://` URL defaults to `psycopg` 3, while the project uses `psycopg2`. I declared the driver in the URL (`postgresql+psycopg2://`).
 
-**Habilidades aplicadas:** Streamlit · Python (pandas, SQLAlchemy) · SQL (CTE, `FULL JOIN`, ventanas de tiempo) · roles y permisos en PostgreSQL (mínimo privilegio) · manejo de secretos · pruebas con conexión simulada · revisión de código y de arquitectura
+**Result**
+As of October 9, 2026 the numbers match the Search Console panel: 96 clicks, 3,199 impressions, 3.0 % CTR and an average position of 3.8. With data through October 11, the dashboard shows 98 clicks, 3,327 impressions, 2.9 % CTR and position 3.9. That last week four blog pages went up (the biggest from 0 to 9 clicks) and the main page went down from 3 to 2. For now it runs on my computer (`streamlit run app.py`); it will be published as part of Stage 5e.
+
+**Skills:** Streamlit · Python (pandas, SQLAlchemy) · SQL (CTEs, `FULL JOIN`, time windows) · PostgreSQL roles and permissions (least privilege) · secrets management · tests with a mocked connection · code and architecture review
+
+</details>
+
+<details>
+<summary><b>Stage 5a (in progress): Weekly AI summary</b></summary>
+
+**Goal**
+Every Monday, an email with the numbers, a diagnosis and up to three recommendations, each labeled 🤖 (the agent does it), 🤝 (the agent prepares it and a person approves) or 👤 (a person does it).
+
+**What I did**
+
+1. **An `agente/` package run as `python -m agente`,** as a second job in the weekly workflow that only runs when ingestion succeeds (`needs: ingesta`).
+2. **`detectar.py`:** runs the SQL (this week's totals vs. last week's, pages going up and down, CTR opportunities, new queries, brand vs. non-brand) and builds a list of findings, each with an ID and its sentence for the email written from the SQL numbers.
+3. **`estratega.py`:** a single call to Claude Sonnet with structured output (a Pydantic schema). The model's instructions live in `agente/reglas_seo.md`: the data rules from the notes above, plus the output format. A hash of that file is stored with every diagnosis as the prompt version.
+4. **`mail.py`:** a plain-text and HTML email sent through Resend's API. Everything that comes from the AI or from search queries is HTML-escaped, since anyone can type anything into Google.
+5. **A `diagnosticos` table** with `UNIQUE (cliente, ventana_fin)` and an `enviado` flag: running twice on the same Monday doesn't duplicate the row or the email.
+6. **A dedicated `agente_rw` role:** reads three objects, writes only to `diagnosticos` and can't delete. It was created with SQL rather than from the Neon console, because console-created roles inherit `neon_superuser`.
+7. **`test_agente.py`:** 7 cases with the database, the AI and Resend mocked: no data, low volume, an incomplete window, an AI failure or invalid JSON, a repeated run (including a failed send that gets retried), a recommendation citing a finding that doesn't exist, and HTML escaping.
+
+**Design decisions**
+
+- **One Sonnet call over findings computed in SQL,** instead of a chain of two models: a cheaper first model added nothing on top of already-clean JSON.
+- **Thresholds calibrated on real data:** the week to October 23 had 21 clicks in total, so a page has to move at least 3 clicks and a new query needs at least 5 impressions to be reported.
+- **Incomplete window** (fewer than 14 days with data): no comparison and no AI call; the email goes out with a warning.
+
+**Pending**
+API keys and GitHub secrets, and the first real run with the AI on.
+
+**Skills:** Claude API (structured outputs) · Pydantic · prompt design · idempotent jobs · PostgreSQL roles (least privilege) · email delivery (Resend) · testing with mocks
+
+</details>
