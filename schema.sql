@@ -70,3 +70,18 @@ FROM rendimiento_paginas;
 --   Para reproducir una semana pasada, guardar la fecha de la última ingesta y leerla acá.
 CREATE OR REPLACE VIEW v_ventana AS
 SELECT CURRENT_DATE - 3 AS fin;
+
+-- Etapa 5a: un diagnóstico del agente por cliente y semana (python -m agente).
+-- UNIQUE + enviado: si el workflow corre dos veces, no duplica la fila ni manda dos mails.
+CREATE TABLE IF NOT EXISTS diagnosticos (
+    id              SERIAL PRIMARY KEY,
+    cliente         TEXT NOT NULL DEFAULT 'estudiojuridicorios',
+    ventana_fin     DATE NOT NULL,         -- último día de la semana analizada
+    hallazgos       JSONB NOT NULL,        -- lo que calculó SQL (con los textos del mail)
+    respuesta_ia    JSONB,                 -- NULL si falló la IA o la ventana estaba incompleta
+    modelo          TEXT,
+    version_prompt  TEXT,                  -- hash de agente/reglas_seo.md
+    enviado         BOOLEAN NOT NULL DEFAULT FALSE,
+    creado          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (cliente, ventana_fin)
+);

@@ -26,3 +26,22 @@ jobs:
           # Trae los últimos ~10 días: los más recientes los GSC corrige después,
           # y el upsert (UNIQUE fecha+consulta+página) pisa en vez de duplicar.
           DIAS_ATRAS: "10"
+
+  # Etapa 5a: resumen semanal con IA. Si la ingesta falla, no corre.
+  agente:
+    needs: ingesta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m agente
+        env:
+          DATABASE_URL: ${{ secrets.AGENTE_DATABASE_URL }}  # rol agente_rw, no el dueño
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MAIL_DESTINO: ${{ secrets.MAIL_DESTINO }}
