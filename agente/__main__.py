@@ -2,9 +2,13 @@
 
 detectar (SQL) -> estratega (Sonnet, JSON) -> tabla diagnosticos (Neon) -> mail (Resend).
 Con SOLO_IMPRIMIR=1 muestra el mail en pantalla: no escribe en la base ni manda nada.
+Con --demo arma el mail con los datos ficticios de agente/demo.json: no necesita base, IA ni claves.
 """
+import json
 import os
+import sys
 from datetime import date
+from pathlib import Path
 
 import psycopg2
 from dotenv import load_dotenv
@@ -62,7 +66,23 @@ def correr(cur, solo_imprimir=False):
     print(f"Resumen de la semana al {datos['fin']} enviado.")
 
 
+def demo():
+    """Mismo armado y mismo mail que una semana real, a partir de filas ficticias y una respuesta de ejemplo."""
+    ejemplo = json.loads(Path(__file__).with_name("demo.json").read_text(encoding="utf-8"))
+    filas = ejemplo["filas"]
+    for t in filas["totales"]:
+        t["fin"] = date.fromisoformat(t["fin"])  # psycopg2 devuelve fechas, el JSON texto
+    datos = detectar.armar(filas)
+    respuesta = estratega.Respuesta.model_validate(ejemplo["respuesta_ia"]).model_dump()
+    asunto, texto, _ = mail.armar(datos, respuesta)
+    print(asunto, texto, sep="\n\n")
+
+
 def main():
+    sys.stdout.reconfigure(encoding="utf-8")  # emojis del mail en consolas de Windows
+    if "--demo" in sys.argv[1:]:
+        demo()
+        return
     load_dotenv()
     # connect_timeout: Neon tarda en despertar si estuvo inactiva
     conexion = psycopg2.connect(os.environ["DATABASE_URL"], connect_timeout=30)

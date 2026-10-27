@@ -5,7 +5,7 @@ from datetime import date
 from unittest.mock import patch
 
 from agente import detectar, estratega, mail
-from agente.__main__ import correr
+from agente.__main__ import correr, demo
 
 os.environ.update(MAIL_DESTINO="yo@ejemplo.com", RESEND_API_KEY="re_prueba")
 FIN = date(2026, 10, 23)
@@ -25,7 +25,7 @@ def filas(dias=(7, 7), paginas=(), nuevas=()):
     }
 
 
-SEMANA = filas(paginas=[("sitio.com.ar/blog/amparo", 14, 6)])  # hallazgos: 1 totales, 2 la página que baja
+SEMANA = filas(paginas=[("sitio.example/blog/lumbalgia", 14, 6)])  # hallazgos: 1 totales, 2 la página que baja
 
 
 class Diagnosticos:
@@ -88,10 +88,10 @@ def test_semana_sin_datos():
 
 def test_poco_volumen():
     datos = detectar.armar(filas(paginas=[("s.com/a", 1, 2), ("s.com/b", 5, 0), ("s.com/c", 0, 3), ("s.com", 4, 2)],
-                                 nuevas=[("ruido", 2), ("despido sin causa parana", 8)]))
+                                 nuevas=[("ruido", 2), ("kinesiologo deportivo", 8)]))
     textos = [h["texto"] for h in datos["hallazgos"][1:]]
     assert textos == ["/b baja de 5 a 0 clics", "/c sube de 0 a 3 clics",
-                      'Consulta nueva: "despido sin causa parana" (8 impresiones, 0 clics)']
+                      'Consulta nueva: "kinesiologo deportivo" (8 impresiones, 0 clics)']
     assert [h["id"] for h in datos["hallazgos"]] == [1, 2, 3, 4]
 
 
@@ -111,7 +111,7 @@ def test_ia_falla_o_json_invalido():
             _, mails = correr_con(Diagnosticos(), SEMANA, ia=salida, error_ia=error)
         texto = mails[0]["text"]
         assert "21 clics (-12) · 1.171 impresiones (+142)" in texto
-        assert "/blog/amparo baja de 14 a 6 clics" in texto
+        assert "/blog/lumbalgia baja de 14 a 6 clics" in texto
         assert "La IA no respondió" in texto and "Qué haría" not in texto
 
 
@@ -138,7 +138,7 @@ def test_hallazgo_inexistente():
     _, mails = correr_con(base, SEMANA, ia=respuesta_ia(2, 99, 1, 2))
     recomendaciones = base.filas[FIN.isoformat()]["respuesta_ia"]["recomendaciones"]
     assert [r["hallazgo_id"] for r in recomendaciones] == [2, 1, 2]  # el 99 se descarta; tope de 3
-    assert "Dato: /blog/amparo baja de 14 a 6 clics" in mails[0]["text"]
+    assert "Dato: /blog/lumbalgia baja de 14 a 6 clics" in mails[0]["text"]
     assert "<li>" in mails[0]["html"]
 
 
@@ -146,6 +146,15 @@ def test_html_escapado():
     datos = detectar.armar(filas(nuevas=[("<script>alert(1)</script>", 9)]))
     _, _, cuerpo = mail.armar(datos, None)
     assert "<script>" not in cuerpo and "&lt;script&gt;" in cuerpo
+
+
+def test_demo():
+    with patch("builtins.print") as imprimir:
+        demo()
+    texto = imprimir.call_args.args[1]
+    assert "34 clics (-7) · 1.480 impresiones (+178)" in texto
+    assert "🤝" in texto and "👤" in texto and "Dato: /blog/ejercicios-para-lumbalgia baja de 14 a 6 clics" in texto
+    assert "/turnos" not in texto and "turno kinesiologia sabado" not in texto  # debajo del umbral
 
 
 if __name__ == "__main__":

@@ -1,0 +1,58 @@
+{
+  "nota": "Datos ficticios para python -m agente --demo. 'filas' tiene la forma que devuelven las consultas de detectar.CONSULTAS; 'respuesta_ia' es una respuesta de ejemplo escrita a mano con la forma de estratega.Respuesta (en modo demo no se llama a la IA).",
+  "filas": {
+    "totales": [
+      {"semana": "actual", "fin": "2026-10-16", "dias": 7, "clics": 34, "impresiones": 1480, "ctr": 2.3, "posicion": 6.2},
+      {"semana": "anterior", "fin": "2026-10-16", "dias": 7, "clics": 41, "impresiones": 1302, "ctr": 3.1, "posicion": 6.0}
+    ],
+    "paginas": [
+      {"pagina": "clinica-demo.example/blog/ejercicios-para-lumbalgia", "clics_antes": 14, "clics_ahora": 6, "diferencia": -8},
+      {"pagina": "clinica-demo.example/blog/esguince-de-tobillo-cuando-volver-a-correr", "clics_antes": 6, "clics_ahora": 2, "diferencia": -4},
+      {"pagina": "clinica-demo.example/turnos", "clics_antes": 3, "clics_ahora": 2, "diferencia": -1},
+      {"pagina": "clinica-demo.example/servicios/rehabilitacion-de-rodilla", "clics_antes": 4, "clics_ahora": 5, "diferencia": 1},
+      {"pagina": "clinica-demo.example/blog/cuanto-dura-la-rehabilitacion-de-lca", "clics_antes": 2, "clics_ahora": 4, "diferencia": 2},
+      {"pagina": "clinica-demo.example", "clics_antes": 12, "clics_ahora": 15, "diferencia": 3}
+    ],
+    "oportunidades_ctr": [
+      {"consulta": "physiotherapy near me", "pagina": "clinica-demo.example", "impresiones": 140, "clics": 0, "posicion": 1.6},
+      {"consulta": "ejercicios lumbalgia", "pagina": "clinica-demo.example/blog/ejercicios-para-lumbalgia", "impresiones": 96, "clics": 1, "posicion": 8.4},
+      {"consulta": "cuanto dura la rehabilitacion de lca", "pagina": "clinica-demo.example/blog/cuanto-dura-la-rehabilitacion-de-lca", "impresiones": 41, "clics": 0, "posicion": 11.2}
+    ],
+    "consultas_nuevas": [
+      {"consulta": "kinesiologo deportivo zona norte", "clics": 0, "impresiones": 12},
+      {"consulta": "dolor de rodilla al subir escaleras", "clics": 1, "impresiones": 7},
+      {"consulta": "turno kinesiologia sabado", "clics": 0, "impresiones": 3}
+    ],
+    "marca": [
+      {"tipo": "marca", "clics_ahora": 4, "clics_antes": 5, "impresiones_ahora": 18, "impresiones_antes": 21},
+      {"tipo": "sin marca", "clics_ahora": 6, "clics_antes": 7, "impresiones_ahora": 402, "impresiones_antes": 355}
+    ]
+  },
+  "respuesta_ia": {
+    "diagnostico": "La semana cerró con menos clics aunque el sitio apareció más veces en Google, por eso bajó el porcentaje de clics sobre impresiones. La caída se concentra en dos notas del blog, sobre todo la de ejercicios para la lumbalgia, y la home compensó en parte. Importa porque esas notas son las que traen gente que todavía no conoce el consultorio.",
+    "recomendaciones": [
+      {
+        "hallazgo_id": 2,
+        "accion": "Reescribir el title y la meta description de /blog/ejercicios-para-lumbalgia para que respondan directo a lo que se busca y digan qué va a encontrar la persona al entrar. El agente prepara dos o tres opciones y una persona del consultorio elige.",
+        "jev": "hibrido",
+        "motivo": "Es la nota que más clics perdió y además aparece seguido para esa búsqueda sin que casi nadie entre. Eso apunta más a un título que no convence que a un problema de posición."
+      },
+      {
+        "hallazgo_id": 8,
+        "accion": "Sumar a la página de servicios una sección sobre kinesiología deportiva, escrita por un profesional del consultorio.",
+        "jev": "persona",
+        "motivo": "Es una búsqueda nueva de alguien que todavía no eligió dónde atenderse, y hoy el sitio no tiene una página que le responda directamente."
+      },
+      {
+        "hallazgo_id": 3,
+        "accion": "Seguir midiendo /blog/esguince-de-tobillo-cuando-volver-a-correr la próxima semana y avisar si sigue bajando, antes de tocar el contenido.",
+        "jev": "agente",
+        "motivo": "Partía de pocos clics, así que la baja puede ser una oscilación normal. Conviene confirmarla antes de invertir tiempo en reescribirla."
+      }
+    ],
+    "advertencias": [
+      "Las dos notas que bajaron partían de pocos clics: parte de la caída puede ser variación normal y no pérdida de posiciones.",
+      "Parte de la suba de impresiones viene de búsquedas en inglés que llegan a la home y no hacen clic; eso baja el porcentaje de clics sin que sea un problema de las páginas."
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 # Arquitectura del Agente de Marketing sobre Observatorio SEO (desde la Etapa 5)
 
 > Repo base: `massonimanuel02-collab/Observatorio-Seo`
-> Caso real: Estudio Jurídico Ríos (`sc-domain:estudiojuridicorios.com.ar`)
+> Caso real: un cliente, propiedad de dominio de Search Console
 > Estado: **Aprobada** (ver ADR-001 al final)
 > Última actualización: 26/10/2026
 
@@ -63,7 +63,7 @@
    └─────────────────────┘                │ KPIs · Agente · Finanzas       │
                                           └───────────────────────────────┘
               ┌──────────────────────────────────────────────┐
-              │ Repo Estudio-Juridico-Rios (Etapa 5c)        │
+              │ Repo del sitio del cliente (Etapa 5c)        │
               │ El agente abre PR → Manuuu revisa → merge →  │
               │ Vercel publica                               │
               └──────────────────────────────────────────────┘
@@ -121,7 +121,7 @@ detectar.py (SQL) → estratega.py (Sonnet, salida JSON) → diagnosticos (Neon)
 {
   "diagnostico": "Texto corto de qué pasó y por qué importa",
   "recomendaciones": [
-    { "hallazgo_id": 3, "accion": "Reescribir el title de /amparos-de-salud", "jev": "hibrido", "motivo": "180 impresiones, 1 clic" }
+    { "hallazgo_id": 3, "accion": "Reescribir el title de /blog/ejercicios-para-lumbalgia", "jev": "hibrido", "motivo": "Aparece seguido y casi nadie entra" }
   ],
   "advertencias": ["Con este volumen, ±2 clics no es tendencia"]
 }
@@ -132,7 +132,7 @@ detectar.py (SQL) → estratega.py (Sonnet, salida JSON) → diagnosticos (Neon)
 ```sql
 CREATE TABLE IF NOT EXISTS diagnosticos (
     id              SERIAL PRIMARY KEY,
-    cliente         TEXT NOT NULL DEFAULT 'estudiojuridicorios',
+    cliente         TEXT NOT NULL,
     ventana_fin     DATE NOT NULL,
     hallazgos       JSONB NOT NULL,      -- lo que calculó SQL
     respuesta_ia    JSONB,               -- NULL si falló la IA
@@ -147,11 +147,11 @@ CREATE TABLE IF NOT EXISTS diagnosticos (
 **Mail (ejemplo):**
 > **Asunto:** Observatorio SEO · Semana 13/10 – 19/10
 > **Los números:** 34 clics (+6) · 1.120 impresiones · CTR 3,0 % · Posición 3,8
-> **Qué pasó:** 2 páginas del blog suben; la home baja de 12 a 9 clics. Consulta nueva sin marca: "despido sin causa parana".
+> **Qué pasó:** 2 páginas del blog suben; la home baja de 12 a 9 clics. Consulta nueva sin marca: "kinesiologo deportivo zona norte".
 > **Qué haría:**
-> 🤝 Reescribir el title de /amparos-de-salud
+> 🤝 Reescribir el title de /blog/ejercicios-para-lumbalgia
 > 👤 Pedir reseñas en Google Business Profile
-> 🤖 Seguir "despido sin causa parana" la próxima semana
+> 🤖 Seguir "kinesiologo deportivo zona norte" la próxima semana
 > *Ojo: con este volumen, ±2 clics no es tendencia.*
 
 **Manejo de fallas:**
@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS tareas (
 **Objetivo:** el agente propone cambios concretos en el sitio y vos aprobás con un merge.
 
 - Solo tareas `hibrido` de tipo `title_meta` (al principio).
-- `acciones.py` crea una rama en `Estudio-Juridico-Rios`, edita el HTML y abre un PR con el antes/después y el motivo (datos de SQL).
+- `acciones.py` crea una rama en el repo del sitio, edita el HTML y abre un PR con el antes/después y el motivo (datos de SQL).
 - Merge = aprobación → Vercel publica → la tarea pasa a `hecha` con `fecha_hecha`.
 - Token de GitHub con permiso **solo** sobre ese repo (fine-grained token), guardado como secret.
 - Nunca hace merge solo.

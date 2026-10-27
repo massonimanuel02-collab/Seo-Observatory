@@ -12,8 +12,7 @@ ORDER BY clics DESC;
 
 
 -- 2. Consultas que más clics traen
--- Hallazgo: 24 de 26 clics (92%) vienen de la búsqueda de marca
--- "Estudio juridico rios y asociados".
+-- En un sitio nuevo, casi todos suelen venir de la búsqueda de marca.
 SELECT consulta, clics, impresiones, ctr, posicion
 FROM consultas
 ORDER BY clics DESC
@@ -21,7 +20,6 @@ LIMIT 10;
 
 
 -- 3. Oportunidades de CTR: muchas impresiones y ningún clic
--- (Sin resultados en esta primera carga: sitio nuevo, poco volumen)
 SELECT consulta, impresiones, clics, ctr, posicion
 FROM consultas
 WHERE impresiones > 50 AND clics = 0
@@ -29,7 +27,6 @@ ORDER BY impresiones DESC;
 
 
 -- 4. "Casi página 1": consultas entre la posición 8 y 20
--- (Sin resultados en esta primera carga: sitio nuevo, poco volumen)
 SELECT consulta, posicion, impresiones
 FROM consultas
 WHERE posicion BETWEEN 8 AND 20
