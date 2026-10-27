@@ -1,4 +1,4 @@
-# Observatorio SEO
+# SEO OBSERVATORY + AI MKT AGENT
 
 **A weekly SEO monitor for small sites: Google Search Console → PostgreSQL → SQL findings → an AI-written email with up to three next steps.**
 
